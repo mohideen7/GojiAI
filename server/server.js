@@ -23,7 +23,7 @@ app.post("/chat", async (req, res) => {
 
     let response;
 
-for (let attempt = 0; attempt < 3; attempt++) {
+for (let attempt = 0; attempt < 2; attempt++) {
   try {
     response = await ai.models.generateContent({
       model: "gemini-3.8-flash",
@@ -32,11 +32,17 @@ for (let attempt = 0; attempt < 3; attempt++) {
 
     break;
   } catch (error) {
-    if (attempt === 2) throw error;
+    const status = error.status;
 
-    await new Promise(resolve =>
-      setTimeout(resolve, 1000 * Math.pow(2, attempt))
-    );
+    if (status !== 429 && status !== 503) {
+      throw error;
+    }
+
+    if (attempt === 1) {
+      throw error;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 45000));
   }
 }
     res.json({
