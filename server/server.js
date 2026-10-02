@@ -21,11 +21,24 @@ app.post("/chat", async (req, res) => {
   try {
     const { message } = req.body;
 
-    const response = await ai.models.generateContent({
+    let response;
+
+for (let attempt = 0; attempt < 3; attempt++) {
+  try {
+    response = await ai.models.generateContent({
       model: "gemini-3.8-flash",
       contents: message,
     });
 
+    break;
+  } catch (error) {
+    if (attempt === 2) throw error;
+
+    await new Promise(resolve =>
+      setTimeout(resolve, 1000 * Math.pow(2, attempt))
+    );
+  }
+}
     res.json({
       reply: response.text,
     });
