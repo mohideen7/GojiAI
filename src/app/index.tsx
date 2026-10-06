@@ -42,7 +42,7 @@ export default function HomeScreen() {
     setMessage("");
 
     try {
-      const response = await fetch("http://192.168.31.76:3000/chat", {
+      const response = await fetch("https://gojiai.onrender.com/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -54,20 +54,25 @@ export default function HomeScreen() {
 
       const data = await response.json();
 
+      console.log("Goji server status:", response.status);
+      console.log("Goji server response:", data);
+
       setMessages((old) => [
         ...old,
         {
           id: (Date.now() + 1).toString(),
-          text: data.reply || "No response from Gemini.",
+          text: data.reply || "No response from Goji.",
           sender: "ai",
         },
       ]);
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Goji connection error:", error);
+
       setMessages((old) => [
         ...old,
         {
           id: (Date.now() + 1).toString(),
-          text: "Couldn't connect to Goji AI server 😭",
+          text: `Goji error: ${error.message}`,
           sender: "ai",
         },
       ]);
@@ -100,7 +105,11 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <View style={styles.heroCard}>
             <Image source={mikuGojiImage} style={styles.heroImage} />
-            <Text style={styles.heroTitle}>Welcome to Goji AI 💙</Text>
+
+            <Text style={styles.heroTitle}>
+              Welcome to Goji AI 💙
+            </Text>
+
             <Text style={styles.heroSubtitle}>
               Your Miku × Gojira AI companion
             </Text>
@@ -110,11 +119,16 @@ export default function HomeScreen() {
           <View
             style={[
               styles.messageRow,
-              item.sender === "user" ? styles.userRow : styles.aiRow,
+              item.sender === "user"
+                ? styles.userRow
+                : styles.aiRow,
             ]}
           >
             {item.sender === "ai" && (
-              <Image source={gojiraImage} style={styles.avatar} />
+              <Image
+                source={gojiraImage}
+                style={styles.avatar}
+              />
             )}
 
             <View
@@ -125,11 +139,16 @@ export default function HomeScreen() {
                   : styles.aiMessage,
               ]}
             >
-              <Text style={styles.messageText}>{item.text}</Text>
+              <Text style={styles.messageText}>
+                {item.text}
+              </Text>
             </View>
 
             {item.sender === "user" && (
-              <Image source={mikuImage} style={styles.avatar} />
+              <Image
+                source={mikuImage}
+                style={styles.avatar}
+              />
             )}
           </View>
         )}
@@ -150,7 +169,10 @@ export default function HomeScreen() {
           onSubmitEditing={sendMessage}
         />
 
-        <TouchableOpacity style={styles.send} onPress={sendMessage}>
+        <TouchableOpacity
+          style={styles.send}
+          onPress={sendMessage}
+        >
           <Text style={styles.sendText}>➤</Text>
         </TouchableOpacity>
       </View>
