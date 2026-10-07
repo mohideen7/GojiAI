@@ -2,19 +2,14 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
-
-
+const OpenAI = require("openai");
 const multer = require("multer");
+const { PDFParse } = require("pdf-parse");
+const fs = require("fs");
 
 const upload = multer({
   dest: "uploads/",
 });
-
-
-const pdfParse = require("pdf-parse");
-
-
-const OpenAI = require("openai");
 
 const app = express();
 
@@ -27,9 +22,10 @@ const ai = new OpenAI({
 });
 
 app.get("/", (req, res) => {
-  res.json({ message: "Goji AI server is running 🤖" });
+  res.json({
+    message: "Goji AI server is running 🤖",
+  });
 });
-
 
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
@@ -43,12 +39,21 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     // PDF understanding
     if (req.file.mimetype === "application/pdf") {
-      const fs = require("fs");
-
       const pdfBuffer = fs.readFileSync(req.file.path);
-      const pdfData = await pdfParse(pdfBuffer);
 
-      console.log("PDF text extracted:", pdfData.text.length, "characters");
+      const parser = new PDFParse({
+        data: pdfBuffer,
+      });
+
+      const pdfData = await parser.getText();
+
+      await parser.destroy();
+
+      console.log(
+        "PDF text extracted:",
+        pdfData.text.length,
+        "characters"
+      );
 
       return res.json({
         message: "PDF understood successfully",
@@ -73,52 +78,55 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-
 app.post("/chat", async (req, res) => {
   try {
     const { message } = req.body;
 
     let response;
 
-for (let attempt = 0; attempt < 2; attempt++) {
-  try {
-  response = await ai.chat.completions.create({
-    model: "openrouter/free",
-   
-     messages: [
-  {
-    role: "system",
-    content: "You are Goji AI, a helpful personal AI assistant. Your name is Goji. Never identify yourself as Kimi, Moonshot AI, Gemini, OpenRouter, or any other model or provider. Always respond as Goji AI.",
-  },
-  {
-    role: "user",
-    content: message,
-  },
-],
-  });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await ai.chat.completions.create({
+          model: "openrouter/free",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are Goji AI, a helpful personal AI assistant. Your name is Goji. Never identify yourself as Kimi, Moonshot AI, Gemini, OpenRouter, or any other model or provider. Always respond as Goji AI.",
+            },
+            {
+              role: "user",
+              content: message,
+            },
+          ],
+        });
 
-    break;
-  } catch (error) {
-    const status = error.status;
+        break;
+      } catch (error) {
+        const status = error.status;
 
-    if (status !== 429 && status !== 503) {
-      throw error;
+        if (status !== 429 && status !== 503) {
+          throw error;
+        }
+
+        if (attempt === 1) {
+          throw error;
+        }
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, 45000)
+        );
+      }
     }
 
-    if (attempt === 1) {
-      throw error;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 45000));
-  }
-}
     res.json({
-  reply: response.choices[0].message.content,
-});
+      reply: response.choices[0].message.content,
+    });
   } catch (error) {
     console.error(error);
+
     res.status(500).json({
-    error: "AI request failed",
+      error: "AI request failed",
     });
   }
 });
