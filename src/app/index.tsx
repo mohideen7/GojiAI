@@ -1,3 +1,6 @@
+import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
+import { fetch as expoFetch } from "expo/fetch";
 import { useState } from "react";
 import {
   FlatList,
@@ -17,6 +20,7 @@ const gojiraImage = require("../../assets/images/gojira.png");
 
 export default function HomeScreen() {
   const [message, setMessage] = useState("");
+
   const [messages, setMessages] = useState([
     {
       id: "1",
@@ -42,15 +46,18 @@ export default function HomeScreen() {
     setMessage("");
 
     try {
-      const response = await fetch("https://gojiai.onrender.com/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userMessage,
-        }),
-      });
+      const response = await fetch(
+        "https://gojiai-1.onrender.com/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: userMessage,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -79,6 +86,41 @@ export default function HomeScreen() {
     }
   };
 
+  const pickAndUploadFile = async () => {
+    try {
+     const result = await DocumentPicker.getDocumentAsync({
+  type: ["application/pdf", "image/*"],
+  copyToCacheDirectory: false,
+});
+
+      if (result.canceled) return;
+
+      const selectedFile = result.assets[0];
+
+      console.log("Selected file:", selectedFile);
+
+      const file = new File(selectedFile.uri);
+
+      const formData = new FormData();
+
+      formData.append("file", file);
+
+      const response = await expoFetch(
+        "https://gojiai-1.onrender.com/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+const data = await response.text();
+
+console.log("Upload status:", response.status);
+console.log("Upload response:", data);
+    } catch (error) {
+      console.error("Upload error:", error);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -86,15 +128,25 @@ export default function HomeScreen() {
     >
       {/* HEADER */}
       <View style={styles.header}>
-        <Image source={gojiraImage} style={styles.gojiraHeader} />
+        <Image
+          source={gojiraImage}
+          style={styles.gojiraHeader}
+        />
 
         <View style={styles.headerCenter}>
           <Text style={styles.title}>Goji AI</Text>
-          <Text style={styles.subtitle}>Miku × Gojira AI Companion</Text>
+
+          <Text style={styles.subtitle}>
+            Miku × Gojira AI Companion
+          </Text>
+
           <Text style={styles.online}>● Online</Text>
         </View>
 
-        <Image source={mikuImage} style={styles.mikuHeader} />
+        <Image
+          source={mikuImage}
+          style={styles.mikuHeader}
+        />
       </View>
 
       {/* MAIN CHAT */}
@@ -104,7 +156,10 @@ export default function HomeScreen() {
         contentContainerStyle={styles.chat}
         ListHeaderComponent={
           <View style={styles.heroCard}>
-            <Image source={mikuGojiImage} style={styles.heroImage} />
+            <Image
+              source={mikuGojiImage}
+              style={styles.heroImage}
+            />
 
             <Text style={styles.heroTitle}>
               Welcome to Goji AI 💙
@@ -156,10 +211,20 @@ export default function HomeScreen() {
 
       {/* INPUT */}
       <View style={styles.inputArea}>
+        {/* ATTACHMENT */}
+        <TouchableOpacity
+          style={styles.attachButton}
+          onPress={pickAndUploadFile}
+        >
+          <Text style={styles.attachText}>📎</Text>
+        </TouchableOpacity>
+
+        {/* VOICE */}
         <TouchableOpacity style={styles.voiceButton}>
           <Text style={styles.voiceText}>🎤</Text>
         </TouchableOpacity>
 
+        {/* TEXT INPUT */}
         <TextInput
           style={styles.input}
           placeholder="Message Goji AI..."
@@ -169,6 +234,7 @@ export default function HomeScreen() {
           onSubmitEditing={sendMessage}
         />
 
+        {/* SEND */}
         <TouchableOpacity
           style={styles.send}
           onPress={sendMessage}
@@ -324,6 +390,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#101827",
     borderTopWidth: 1,
     borderTopColor: "#263044",
+  },
+
+  attachButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#202B3D",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 7,
+  },
+
+  attachText: {
+    fontSize: 19,
   },
 
   voiceButton: {

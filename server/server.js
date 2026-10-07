@@ -2,6 +2,14 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
+
+
+const multer = require("multer");
+
+const upload = multer({
+  dest: "uploads/",
+});
+
 const OpenAI = require("openai");
 
 const app = express();
@@ -16,6 +24,31 @@ const ai = new OpenAI({
 
 app.get("/", (req, res) => {
   res.json({ message: "Goji AI server is running 🤖" });
+});
+
+
+app.post("/upload", upload.single("file"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: "No file uploaded",
+      });
+    }
+
+    console.log("Received file:", req.file);
+
+    res.json({
+      message: "File uploaded successfully",
+      filename: req.file.originalname,
+      mimetype: req.file.mimetype,
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+
+    res.status(500).json({
+      error: "File upload failed",
+    });
+  }
 });
 
 app.post("/chat", async (req, res) => {
