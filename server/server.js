@@ -10,6 +10,10 @@ const upload = multer({
   dest: "uploads/",
 });
 
+
+const pdfParse = require("pdf-parse");
+
+
 const OpenAI = require("openai");
 
 const app = express();
@@ -27,7 +31,7 @@ app.get("/", (req, res) => {
 });
 
 
-app.post("/upload", upload.single("file"), (req, res) => {
+app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -37,8 +41,26 @@ app.post("/upload", upload.single("file"), (req, res) => {
 
     console.log("Received file:", req.file);
 
+    // PDF understanding
+    if (req.file.mimetype === "application/pdf") {
+      const fs = require("fs");
+
+      const pdfBuffer = fs.readFileSync(req.file.path);
+      const pdfData = await pdfParse(pdfBuffer);
+
+      console.log("PDF text extracted:", pdfData.text.length, "characters");
+
+      return res.json({
+        message: "PDF understood successfully",
+        filename: req.file.originalname,
+        mimetype: req.file.mimetype,
+        text: pdfData.text,
+      });
+    }
+
+    // Images for now
     res.json({
-      message: "File uploaded successfully",
+      message: "Image uploaded successfully",
       filename: req.file.originalname,
       mimetype: req.file.mimetype,
     });
@@ -46,10 +68,11 @@ app.post("/upload", upload.single("file"), (req, res) => {
     console.error("Upload error:", error);
 
     res.status(500).json({
-      error: "File upload failed",
+      error: "File processing failed",
     });
   }
 });
+
 
 app.post("/chat", async (req, res) => {
   try {
