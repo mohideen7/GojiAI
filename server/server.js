@@ -80,7 +80,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
 app.post("/chat", async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, pdfText } = req.body;
 
     let response;
 
@@ -89,16 +89,18 @@ app.post("/chat", async (req, res) => {
         response = await ai.chat.completions.create({
           model: "openrouter/free",
           messages: [
-            {
-              role: "system",
-              content:
-                "You are Goji AI, a helpful personal AI assistant. Your name is Goji. Never identify yourself as Kimi, Moonshot AI, Gemini, OpenRouter, or any other model or provider. Always respond as Goji AI.",
-            },
-            {
-              role: "user",
-              content: message,
-            },
-          ],
+    {
+     role: "system",
+     content:
+      "You are Goji AI, a helpful personal AI assistant. Your name is Goji. Never identify yourself as another model or provider. If PDF content is provided, use it to answer questions about the document. If the answer isn't in the document, say so honestly.",
+     },
+    {
+     role: "user",
+     content: pdfText
+       ? `Document content:\n${pdfText}\n\nUser question: ${message}`
+       : message,
+     },
+    ],
         });
 
         break;
