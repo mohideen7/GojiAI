@@ -1,3 +1,4 @@
+
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -21,13 +22,30 @@ const ai = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
 });
 
+// Primary model and automatic backup.
+const MODELS = [
+  "google/gemma-4-26b-a4b-it:free",
+  "google/gemma-4-31b-it:free",
+];
+
+const SYSTEM_PROMPT =
+  "You are Goji AI, a helpful personal AI assistant. " +
+  "Your name is Goji. Never identify yourself as another model " +
+  "or provider. If PDF content is provided, use it to answer " +
+  "questions about the document. If the answer isn't in the " +
+  "document, say so honestly. If an image is provided, analyze " +
+  "its actual contents and answer the user's question about it.";
+
 app.get("/", (req, res) => {
   res.json({
     message: "Goji AI server is running 🤖",
   });
 });
 
+// PDF and image upload endpoint.
 app.post("/upload", upload.single("file"), async (req, res) => {
+  let parser;
+
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -35,18 +53,17 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    console.log("Received file:", req.file);
+    console.log("Received file:", req.file.originalname);
+    console.log("File type:", req.file.mimetype);
 
-    // PDF understanding
     if (req.file.mimetype === "application/pdf") {
       const pdfBuffer = fs.readFileSync(req.file.path);
 
-      const parser = new PDFParse({
+      parser = new PDFParse({
         data: pdfBuffer,
       });
 
       const pdfData = await parser.getText();
-      await parser.destroy();
 
       console.log(
         "PDF text extracted:",
@@ -62,8 +79,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    // Images for now
-    res.json({
+    return res.json({
       message: "Image uploaded successfully",
       filename: req.file.originalname,
       mimetype: req.file.mimetype,
@@ -71,50 +87,80 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   } catch (error) {
     console.error("Upload error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "File processing failed",
     });
+  } finally {
+    if (parser) {
+      try {
+        await parser.destroy();
+      } catch (error) {
+        console.error("PDF cleanup error:", error.message);
+      }
+    }
+
+    if (req.file?.path) {
+      fs.promises.unlink(req.file.path).catch((error) => {
+        console.error("Temporary file cleanup error:", error.message);
+      });
+    }
   }
 });
 
-
+// Chat endpoint with automatic model fallback.
 app.post("/chat", async (req, res) => {
   try {
-    const { message, pdfText, imageBase64, imageMimeType } = req.body;
+    const {
+      message,
+      pdfText,
+      imageBase64,
+      imageMimeType,
+    } = req.body;
+
+    if (typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({
+        error: "Please enter a message.",
+      });
+    }
 
     console.log("Image received:", !!imageBase64);
     console.log("Image MIME type:", imageMimeType);
     console.log("Image Base64 length:", imageBase64?.length || 0);
+    console.log("PDF context received:", !!pdfText);
+
+    const userContent = [
+      {
+        type: "text",
+        text: pdfText
+          ? `Document content:\n${pdfText}\n\nUser question: ${message}`
+          : message,
+      },
+    ];
+
+    if (imageBase64) {
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${
+            imageMimeType || "image/jpeg"
+          };base64,${imageBase64}`,
+        },
+      });
+    }
 
     let response;
+    let lastError;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of MODELS) {
       try {
-        const userContent = [];
-
-        userContent.push({
-          type: "text",
-          text: pdfText
-            ? `Document content:\n${pdfText}\n\nUser question: ${message}`
-            : message,
-        });
-
-        if (imageBase64) {
-          userContent.push({
-            type: "image_url",
-            image_url: {
-              url: `data:${imageMimeType || "image/jpeg"};base64,${imageBase64}`,
-            },
-          });
-        }
+        console.log("Trying model:", model);
 
         response = await ai.chat.completions.create({
-          model: "google/gemma-4-26b-a4b-it:free",
+          model,
           messages: [
             {
               role: "system",
-              content:
-                "You are Goji AI, a helpful personal AI assistant. Your name is Goji. Never identify yourself as another model or provider. If PDF content is provided, use it to answer questions about the document. If the answer isn't in the document, say so honestly. If an image is provided, analyze its actual contents and answer the user's question about it.",
+              content: SYSTEM_PROMPT,
             },
             {
               role: "user",
@@ -123,38 +169,65 @@ app.post("/chat", async (req, res) => {
           ],
         });
 
-        break;
+        const reply = response.choices?.[0]?.message?.content;
+
+        if (typeof reply !== "string" || !reply.trim()) {
+          throw new Error("Model returned an empty reply");
+        }
+
+        console.log("Model succeeded:", response.model || model);
+        console.log("Raw AI reply:", JSON.stringify(reply));
+
+        return res.json({
+          reply,
+        });
       } catch (error) {
+        lastError = error;
+
         const status = error.status;
 
-        if (status !== 429 && status !== 503) {
-          throw error;
+        console.error(
+          `Model ${model} failed. Status: ${status || "unknown"}`,
+          error.message
+        );
+
+        // Only switch models for errors that may be temporary
+        // or indicate that the requested model is unavailable.
+        const canFallback = [
+          404,
+          408,
+          429,
+          500,
+          502,
+          503,
+          504,
+        ].includes(status);
+
+        if (!canFallback) {
+          break;
         }
 
-        if (attempt === 1) {
-          throw error;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 45000));
+        console.log("Attempting the next model...");
       }
     }
 
-    
-   console.log("Model used:", response.model);
-   console.log(
-     "Raw AI reply:",
-     JSON.stringify(response.choices[0].message.content)
-   );
+    console.error(
+      "All configured models failed:",
+      lastError?.message || "No response"
+    );
 
-   res.json({ reply: response.choices[0].message.content });
-
-   } catch (error) {
+    // Keep provider-specific errors out of the public response.
+    return res.status(503).json({
+      error: "Goji couldn't complete that request.",
+    });
+  } catch (error) {
     console.error("Chat error:", error);
-    res.status(500).json({ error: "AI request failed" });
+
+    return res.status(500).json({
+      error: "Goji encountered an unexpected error.",
+    });
   }
 });
-
-        
 
 const PORT = process.env.PORT || 3000;
 
