@@ -46,7 +46,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       });
 
       const pdfData = await parser.getText();
-
       await parser.destroy();
 
       console.log(
@@ -140,10 +139,16 @@ app.post("/chat", async (req, res) => {
       }
     }
 
-    console.log("Raw AI reply:", response.choices[0].message.content);
     
-    res.json({ reply: response.choices[0].message.content });
-  } catch (error) {
+   console.log("Model used:", response.model);
+   console.log(
+     "Raw AI reply:",
+     JSON.stringify(response.choices[0].message.content)
+   );
+
+   res.json({ reply: response.choices[0].message.content });
+
+   } catch (error) {
     console.error("Chat error:", error);
     res.status(500).json({ error: "AI request failed" });
   }

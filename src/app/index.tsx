@@ -2,7 +2,8 @@
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing } from "react-native";
 
 import {
   FlatList,
@@ -20,6 +21,68 @@ import {
 const mikuGojiImage = require("../../assets/images/miku_goji.png");
 const mikuImage = require("../../assets/images/miku.png");
 const gojiraImage = require("../../assets/images/gojira.png");
+
+
+
+function ThinkingDots() {
+  const animations = useRef([
+    new Animated.Value(0.3),
+    new Animated.Value(0.3),
+    new Animated.Value(0.3),
+  ]).current;
+
+  useEffect(() => {
+    const loops = animations.map((value, index) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(index * 180),
+          Animated.timing(value, {
+            toValue: 1,
+            duration: 350,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0.3,
+            duration: 350,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      )
+    );
+
+    loops.forEach((loop) => loop.start());
+
+    return () => loops.forEach((loop) => loop.stop());
+  }, [animations]);
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+      {animations.map((animation, index) => (
+        <Animated.View
+          key={index}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: "#63E8E1",
+            opacity: animation,
+            transform: [
+              {
+                translateY: animation.interpolate({
+                  inputRange: [0.3, 1],
+                  outputRange: [3, -3],
+                }),
+              },
+            ],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 
 export default function HomeScreen() {
   const [message, setMessage] = useState("");
@@ -285,9 +348,7 @@ const sendMessage = async () => {
                 style={styles.avatar}
               />
               <View style={[styles.message, styles.aiMessage]}>
-                <Text style={styles.messageText}>
-                  Goji is thinking... 💭
-                </Text>
+                <ThinkingDots />
               </View>
             </View>
           ) : uploadedFile ? (
