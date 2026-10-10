@@ -147,35 +147,7 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-        break;
-      } catch (error) {
-        const status = error.status;
-
-        if (status !== 429 && status !== 503) {
-          throw error;
-        }
-
-        if (attempt === 1) {
-          throw error;
-        }
-
-        await new Promise((resolve) =>
-          setTimeout(resolve, 45000)
-        );
-      }
-    }
-
-    res.json({
-      reply: response.choices[0].message.content,
-    });
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      error: "AI request failed",
-    });
-  }
-});
+        
 
 const PORT = process.env.PORT || 3000;
 
