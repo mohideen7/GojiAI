@@ -22,11 +22,7 @@ const ai = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
 });
 
-// Primary model and automatic backup.
-const MODELS = [
-  "google/gemma-4-26b-a4b-it:free",
-  "google/gemma-4-31b-it:free",
-];
+const MODEL = "openrouter/free";
 
 const SYSTEM_PROMPT =
   "You are Goji AI, a helpful personal AI assistant. " +
@@ -42,7 +38,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// PDF and image upload endpoint.
+// PDF and image upload endpoint
 app.post("/upload", upload.single("file"), async (req, res) => {
   let parser;
 
@@ -54,7 +50,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     }
 
     console.log("Received file:", req.file.originalname);
-    console.log("File type:", req.file.mimetype);
 
     if (req.file.mimetype === "application/pdf") {
       const pdfBuffer = fs.readFileSync(req.file.path);
@@ -107,7 +102,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// Chat endpoint with automatic model fallback.
+// Chat endpoint with automatic retry
 app.post("/chat", async (req, res) => {
   try {
     const {
@@ -141,82 +136,82 @@ app.post("/chat", async (req, res) => {
       userContent.push({
         type: "image_url",
         image_url: {
-          url: `data:${
-            imageMimeType || "image/jpeg"
-          };base64,${imageBase64}`,
+          url: `data:${imageMimeType || "image/jpeg"};base64,${imageBase64}`,
         },
       });
     }
 
-    let response;
+    const messages = [
+      {
+        role: "system",
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: userContent,
+      },
+    ];
+
     let lastError;
 
-    for (const model of MODELS) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        console.log("Trying model:", model);
-
-        response = await ai.chat.completions.create({
-          model,
-          messages: [
-            {
-              role: "system",
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: "user",
-              content: userContent,
-            },
-          ],
-        });
-
-        const reply = response.choices?.[0]?.message?.content;
-
-        if (typeof reply !== "string" || !reply.trim()) {
-          throw new Error("Model returned an empty reply");
-        }
-
-        console.log("Model succeeded:", response.model || model);
-        console.log("Raw AI reply:", JSON.stringify(reply));
-
-        return res.json({
-          reply,
-        });
-      } catch (error) {
-        lastError = error;
-
-        const status = error.status;
-
-        console.error(
-          `Model ${model} failed. Status: ${status || "unknown"}`,
-          error.message
+        console.log(
+          `Chat attempt ${attempt} using ${MODEL}`
         );
 
-        // Only switch models for errors that may be temporary
-        // or indicate that the requested model is unavailable.
-        const canFallback = [
-          404,
-          408,
-          429,
-          500,
-          502,
-          503,
-          504,
-        ].includes(status);
+        const response = await ai.chat.completions.create({
+          model: MODEL,
+          messages,
+        });
 
-        if (!canFallback) {
+        const reply =
+          response.choices?.[0]?.message?.content || "";
+
+        console.log("Model used:", response.model);
+        console.log("Raw AI reply:", JSON.stringify(reply));
+
+        if (
+          reply.trim().toLowerCase() === "user safety: safe"
+        ) {
+          console.log("Safety-label response detected.");
+
+          if (attempt < 2) {
+            continue;
+          }
+
           break;
         }
 
-        console.log("Attempting the next model...");
+        if (reply.trim()) {
+          return res.json({ reply });
+        }
+
+        lastError = new Error("Model returned an empty reply");
+      } catch (error) {
+        lastError = error;
+
+        console.error(
+          `Chat attempt ${attempt} failed:`,
+          error.status,
+          error.message
+        );
+
+        const retryable = [
+          408, 429, 500, 502, 503, 504,
+        ].includes(error.status);
+
+        if (!retryable || attempt === 2) {
+          break;
+        }
       }
     }
 
     console.error(
-      "All configured models failed:",
-      lastError?.message || "No response"
+      "No usable response after retries:",
+      lastError?.message || "Safety-label response"
     );
 
-    // Keep provider-specific errors out of the public response.
     return res.status(503).json({
       error: "Goji couldn't complete that request.",
     });
