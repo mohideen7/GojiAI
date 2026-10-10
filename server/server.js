@@ -109,7 +109,7 @@ app.post("/chat", async (req, res) => {
         }
 
         response = await ai.chat.completions.create({
-          model: "openrouter/free",
+          model: "google/gemma-4-26b-a4b-it:free",
           messages: [
             {
               role: "system",
