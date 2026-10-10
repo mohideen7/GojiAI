@@ -1,7 +1,9 @@
+
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
 import { useState } from "react";
+
 import {
   FlatList,
   Image,
@@ -14,12 +16,19 @@ import {
   View,
 } from "react-native";
 
+
 const mikuGojiImage = require("../../assets/images/miku_goji.png");
 const mikuImage = require("../../assets/images/miku.png");
 const gojiraImage = require("../../assets/images/gojira.png");
 
 export default function HomeScreen() {
   const [message, setMessage] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [uploadedPdfText, setUploadedPdfText] = useState("");
+  const [uploadedImageBase64, setUploadedImageBase64] = useState<string | null>(null);
+  const [uploadedImageMimeType, setUploadedImageMimeType] = useState<string | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
   const [messages, setMessages] = useState([
     {
@@ -29,73 +38,112 @@ export default function HomeScreen() {
     },
   ]);
 
-  const sendMessage = async () => {
-    if (!message.trim()) return;
+  
+const sendMessage = async () => {
+  if (!message.trim()) return;
 
-    const userMessage = message.trim();
+  const userMessage = message.trim();
+
+  setMessages((old) => [
+    ...old,
+    {
+      id: Date.now().toString(),
+      text: userMessage,
+      sender: "user",
+    },
+  ]);
+
+  setMessage("");
+  setIsThinking(true);
+
+  try {
+    const response = await fetch(
+      "https://gojiai-1.onrender.com/chat",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          pdfText: uploadedPdfText,
+          imageBase64: uploadedImageBase64,
+          imageMimeType: uploadedImageMimeType,
+        }),
+      }
+    );
+
+    const responseText = await response.text();
+
+    console.log("Goji HTTP status:", response.status);
+    console.log("Goji response body:", responseText);
+
+    let data;
+
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        `Goji returned non-JSON data (HTTP ${response.status}): ${responseText.slice(0, 200)}`
+      );
+    }
+
+    console.log("Goji server status:", response.status);
+    console.log("Goji server response:", data);
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
 
     setMessages((old) => [
       ...old,
       {
-        id: Date.now().toString(),
-        text: userMessage,
-        sender: "user",
+        id: (Date.now() + 1).toString(),
+        text: data.reply || "No response from Goji.",
+        sender: "ai",
       },
     ]);
+  } catch (error: any) {
+    console.error("Goji connection error:", error);
 
-    setMessage("");
+    setMessages((old) => [
+      ...old,
+      {
+        id: (Date.now() + 1).toString(),
+        text: `Goji error: ${error.message}`,
+        sender: "ai",
+      },
+    ]);
+  } finally {
+    setIsThinking(false);
+  }
+};
 
-    try {
-      const response = await fetch(
-        "https://gojiai-1.onrender.com/chat",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: userMessage,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      console.log("Goji server status:", response.status);
-      console.log("Goji server response:", data);
-
-      setMessages((old) => [
-        ...old,
-        {
-          id: (Date.now() + 1).toString(),
-          text: data.reply || "No response from Goji.",
-          sender: "ai",
-        },
-      ]);
-    } catch (error: any) {
-      console.error("Goji connection error:", error);
-
-      setMessages((old) => [
-        ...old,
-        {
-          id: (Date.now() + 1).toString(),
-          text: `Goji error: ${error.message}`,
-          sender: "ai",
-        },
-      ]);
-    }
-  };
 
   const pickAndUploadFile = async () => {
     try {
-     const result = await DocumentPicker.getDocumentAsync({
-  type: ["application/pdf", "image/*"],
-  copyToCacheDirectory: false,
-});
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf", "image/*"],
+        copyToCacheDirectory: false,
+      });
 
       if (result.canceled) return;
 
       const selectedFile = result.assets[0];
+
+      setUploadedFile(selectedFile.name);
+
+      let imageBase64: string | null = null;
+
+    if (selectedFile.mimeType?.startsWith("image/")) {
+    const imageFile = new File(selectedFile.uri);
+    imageBase64 = await imageFile.base64();
+
+    setUploadedImageBase64(imageBase64);
+    setUploadedImageMimeType(selectedFile.mimeType);
+
+   console.log("Image converted and saved for Goji Vision");
+}
 
       console.log("Selected file:", selectedFile);
 
@@ -112,10 +160,28 @@ export default function HomeScreen() {
           body: formData,
         }
       );
-const data = await response.text();
 
-console.log("Upload status:", response.status);
-console.log("Upload response:", data);
+      const data = await response.json();
+
+      console.log("Upload status:", response.status);
+      console.log("Upload response:", data);
+
+      if (response.ok) {
+  setUploadedFile(selectedFile.name);
+
+  if (selectedFile.mimeType === "application/pdf") {
+    setUploadedPdfText(data.text || "");
+
+    console.log(
+      "PDF text saved:",
+      (data.text || "").length,
+      "characters"
+    );
+  } else if (selectedFile.mimeType?.startsWith("image/")) {
+    setUploadedImage(selectedFile.uri);
+    console.log("Image saved for Goji Vision");
+  }
+}
     } catch (error) {
       console.error("Upload error:", error);
     }
@@ -170,6 +236,9 @@ console.log("Upload response:", data);
             </Text>
           </View>
         }
+
+       
+
         renderItem={({ item }) => (
           <View
             style={[
@@ -206,8 +275,37 @@ console.log("Upload response:", data);
               />
             )}
           </View>
+        
         )}
+          ListFooterComponent={
+          isThinking ? (
+            <View style={[styles.messageRow, styles.aiRow]}>
+              <Image
+                source={gojiraImage}
+                style={styles.avatar}
+              />
+              <View style={[styles.message, styles.aiMessage]}>
+                <Text style={styles.messageText}>
+                  Goji is thinking... 💭
+                </Text>
+              </View>
+            </View>
+          ) : uploadedFile ? (
+            <View style={styles.uploadedFile}>
+              <Text style={styles.uploadedFileIcon}>📄</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.uploadedFileName}>
+                  {uploadedFile}
+                </Text>
+                <Text style={styles.uploadedFileStatus}>
+                  Uploaded ✓
+                </Text>
+              </View>
+            </View>
+          ) : null
+        }
       />
+
 
       {/* INPUT */}
       <View style={styles.inputArea}>
@@ -381,6 +479,34 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     lineHeight: 22,
+  },
+
+  uploadedFile: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#111C2B",
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#20D9D2",
+    padding: 12,
+    marginBottom: 12,
+  },
+
+  uploadedFileIcon: {
+    fontSize: 25,
+    marginRight: 10,
+  },
+
+  uploadedFileName: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  uploadedFileStatus: {
+    color: "#63E8E1",
+    fontSize: 12,
+    marginTop: 3,
   },
 
   inputArea: {

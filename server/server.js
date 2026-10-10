@@ -140,6 +140,8 @@ app.post("/chat", async (req, res) => {
       }
     }
 
+    console.log("Raw AI reply:", response.choices[0].message.content);
+    
     res.json({ reply: response.choices[0].message.content });
   } catch (error) {
     console.error("Chat error:", error);
