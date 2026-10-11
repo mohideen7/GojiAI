@@ -154,9 +154,26 @@ const sendMessage = async () => {
     console.log("Goji server status:", response.status);
     console.log("Goji server response:", data);
 
+    
+    // Handle Goji's daily quota message
+    if (data.error === "DAILY_QUOTA_EXHAUSTED") {
+      setMessages((old) => [
+        ...old,
+        {
+          id: (Date.now() + 1).toString(),
+          text: data.reply,
+          sender: "ai",
+        },
+      ]);
+
+      return;
+    }
+
+    // Handle other server errors normally
     if (!response.ok) {
       throw new Error(data.error || `HTTP ${response.status}`);
     }
+
 
     setMessages((old) => [
       ...old,

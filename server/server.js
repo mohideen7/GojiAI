@@ -188,7 +188,28 @@ app.post("/chat", async (req, res) => {
         }
 
         lastError = new Error("Model returned an empty reply");
+      
       } catch (error) {
+        const errorMessage = String(
+          error.message || ""
+        ).toLowerCase();
+
+        // Stop immediately when the daily quota is exhausted.
+        if (
+          error.status === 429 &&
+          errorMessage.includes("free-models-per-day")
+        ) {
+          console.log("Daily request limit reached.");
+
+          return res.status(429).json({
+            error: "DAILY_QUOTA_EXHAUSTED",
+            reply:
+              "Hey! 🐉💙 Your daily limit has been reached. " +
+              "Please come back tomorrow, and we'll continue " +
+              "right where we left off! ✨",
+          });
+        }
+
         lastError = error;
 
         console.error(
@@ -205,6 +226,7 @@ app.post("/chat", async (req, res) => {
           break;
         }
       }
+
     }
 
     console.error(
